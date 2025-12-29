@@ -2,7 +2,7 @@
 
 # 🚀 VPS Ubuntu 24.04 Security Hardening Script
 
-**Интерактивный bash скрипт для полной защиты VPS Ubuntu 24.04 за 5 минут**
+**Интерактивный bash скрипт для полной защиты VPS Ubuntu 24.04.X**
 
 🔒 **SSH Hardening** | 🛡️ **UFW Firewall** | ⚡ **Fail2ban** | 🛠️ **Kernel Hardening**
 
@@ -10,14 +10,11 @@
 
 ## 🚀 Быстрый старт (3 команды)
 
-1. Скачать скрипт
-curl -O https://raw.githubusercontent.com/bizneslmv-wq/vps-security-hardening/main/vps-hardening-script.sh
+1. Скачать скрипт curl -O https://raw.githubusercontent.com/bizneslmv-wq/vps-security-hardening/main/vps-hardening-script.sh
 
-2. Права на выполнение
-"chmod +x vps-hardening-script.sh"
+2. Права на выполнение chmod +x vps-hardening-script.sh
 
-3. Запустить
-"sudo ./vps-hardening-script.sh"
+3. Запустить sudo ./vps-hardening-script.sh
 
 
 **Выберите `8` (ВСЁ сразу) → Ответьте на вопросы → VPS защищён!** 🎉
@@ -26,7 +23,7 @@ curl -O https://raw.githubusercontent.com/bizneslmv-wq/vps-security-hardening/ma
 
 | Компонент | Защита от | Результат |
 |-----------|-----------|-----------|
-| **🔐 SSH** | Brute-force, root login | Порт 56123 + ключи only |
+| **🔐 SSH** | Brute-force, root login | Порт ????? + ключи only |
 | **🛡️ UFW** | DDoS, port scanning | `deny incoming` + нужные порты |
 | **⚡ Fail2ban** | Авто-брутфорс | 3 попытки → 1 час бан |
 | **🛠️ Kernel** | SYN flood, spoofing | `tcp_syncookies=1` |
