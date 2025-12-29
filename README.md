@@ -1,50 +1,43 @@
-# vps-security-hardening
-Interactive bash script for Ubuntu 24.04 VPS security hardening
-
 <div align="center">
 
-# 🚀 VPS Ubuntu 24.04 Security Hardening
+# 🚀 VPS Ubuntu 24.04 Security Hardening Script
 
 [![GitHub stars](https://img.shields.io/github/stars/bizneslmv-wq/vps-security-hardening?style=social)](https://github.com/bizneslmv-wq/vps-security-hardening/stargazers/)
-[![License](https://img.shields.io/github/license/bizneslmv-wq/vps-security-hardening)](LICENSE)
-[![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04-orange?logo=ubuntu)](https://ubuntu.com/)
+[![GitHub forks](https://img.shields.io/github/forks/bizneslmv-wq/vps-security-hardening?style=social)](https://github.com/bizneslmv-wq/vps-security-hardening/network/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04%20LTS-orange?logo=ubuntu)](https://ubuntu.com/)
 
-**Интерактивный скрипт защиты VPS Ubuntu 24.04 за 5 минут**
+**Интерактивный bash скрипт для полной защиты VPS Ubuntu 24.04 за 5 минут**
 
-🔒 SSH | 🛡️ Firewall | ⚡ Fail2ban | 🛠️ Kernel
+🔒 **SSH Hardening** | 🛡️ **UFW Firewall** | ⚡ **Fail2ban** | 🛠️ **Kernel Hardening**
 
 </div>
 
-## 🚀 Быстрый старт
+## 🚀 Быстрый старт (3 команды)
 
+1. Скачать скрипт
 curl -O https://raw.githubusercontent.com/bizneslmv-wq/vps-security-hardening/main/vps-hardening-script.sh
+
+2. Права на выполнение
 chmod +x vps-hardening-script.sh
+
+3. Запустить
 sudo ./vps-hardening-script.sh
 
 
-**Выберите `8` (ВСЕ сразу) → Ответьте вопросы → Готово!** 🎉
+**Выберите `8` (ВСЁ сразу) → Ответьте на вопросы → VPS защищён!** 🎉
 
-## ✨ Что делает
+## ✨ Что делает скрипт
 
-| Компонент | Защита от |
-|-----------|-----------|
-| **SSH** | Brute-force, root login |
-| **UFW** | DDoS, port scanning |
-| **Fail2ban** | Авто-блокировка |
-| **Kernel** | SYN flood, spoofing |
+| Компонент | Защита от | Результат |
+|-----------|-----------|-----------|
+| **🔐 SSH** | Brute-force, root login | Порт 56123 + ключи only |
+| **🛡️ UFW** | DDoS, port scanning | `deny incoming` + нужные порты |
+| **⚡ Fail2ban** | Авто-брутфорс | 3 попытки → 1 час бан |
+| **🛠️ Kernel** | SYN flood, spoofing | `tcp_syncookies=1` |
+| **📊 Auditd** | Несанкц. изменения | Мониторинг `/etc/ssh/sshd_config` |
+| **🚫 Services** | Ненужные сервисы | `cups`, `avahi-daemon` off |
 
-## 📱 Пример
-
-SSH порт : [Enter]
-Root login? [y/N]: y
-HTTP(80)? [n]: y
-Fail2ban [3600s]: [Enter]
-
-[✓] SSH: порт 56123 + ключи
-[✓] UFW: deny incoming
-[✓] Fail2ban: 3→1ч бан
-🎉 VPS защищен!
+## 📱 Пример выполнения
 
 
----
-**by [bizneslmv-wq](https://github.com/bizneslmv-wq)** | **MIT License**
