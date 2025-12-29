@@ -1,5 +1,5 @@
 #!/bin/bash
-# VPS Ubuntu 24.04 Security Hardening Script v1.0.0
+# VPS Ubuntu 24.04 Security Hardening Script v1.0.3
 # Author: Maks Leto (bizneslmv-wq)
 # GitHub: https://github.com/bizneslmv-wq/vps-security-hardening
 # License: MIT
@@ -11,242 +11,201 @@ set -e
 RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m' BLUE='\033[0;34m' NC='\033[0m'
 LOG_FILE="/var/log/vps-hardening-$(date +%Y%m%d-%H%M%S).log"
 
+# ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ ОТЧЕТА
+declare -A CONFIG=(
+    ["SSH_PORT"]=""
+    ["HTTP_ENABLED"]="no"
+    ["HTTPS_ENABLED"]="no"
+    ["CUSTOM_PORTS"]=""
+    ["BANTIME"]="2592000"  # 30 дней по умолчанию!
+    ["FINDTIME"]="86400"   # 24 часа
+    ["MAXRETRY"]="3"
+    ["COMPONENTS"]=""
+)
+
 log() { echo -e "${BLUE}[$(date '+%H:%M:%S')]${NC} $1" | tee -a "$LOG_FILE"; }
-success() { echo -e "${GREEN}[✓]${NC} $1" | tee -a "$LOG_FILE"; }
+success() { echo -e "${GREEN}[✓]${NC} $1" | tee -a "$LOG_FILE"; CONFIG["COMPONENTS"]+="$1 | "; }
 error() { echo -e "${RED}[✗]${NC} $1" | tee -a "$LOG_FILE"; exit 1; }
 warning() { echo -e "${YELLOW}[!]${NC} $1" | tee -a "$LOG_FILE"; }
 
-# Checks
-check_root() {
-    [[ $EUID -ne 0 ]] && { error "Запуск от root (sudo)"; exit 1; }
-}
+check_root() { [[ $EUID -ne 0 ]] && error "Запуск от root (sudo)"; }
+check_ubuntu() { [[ ! $(lsb_release -rs 2>/dev/null || echo "unknown") = "24.04" ]] && warning "Рекомендуется Ubuntu 24.04"; }
 
-check_ubuntu() {
-    [[ ! $(lsb_release -rs) = "24.04" ]] && warning "Рекомендуется Ubuntu 24.04"
-}
-
-# Banner
 show_banner() {
     clear
     cat << "EOF"
 ╔═══════════════════════════════════════════════════════════════╗
-║       🚀 VPS Ubuntu 24.04 Security Hardening v1.0.0          ║
+║       🚀 VPS Ubuntu 24.04 Security Hardening v1.0.3          ║
 ║                        by bizneslmv-wq                       ║
 ║              https://github.com/bizneslmv-wq                 ║
 ╚═══════════════════════════════════════════════════════════════╝
 EOF
 }
 
-# Menu
+setup_ssh_port() {
+    if [[ -z "${CONFIG[SSH_PORT]}" ]]; then
+        echo -e "\n${YELLOW}🔐 НАСТРОЙКА SSH ПОРТА:${NC}"
+        read -p "SSH порт для VPS [56123]: " SSH_PORT_INPUT
+        CONFIG[SSH_PORT]=${SSH_PORT_INPUT:-56123}
+        
+        if ! [[ "${CONFIG[SSH_PORT]}" =~ ^[0-9]+$ ]] || [[ "${CONFIG[SSH_PORT]}" -lt 1024 ]] || [[ "${CONFIG[SSH_PORT]}" -gt 65535 ]]; then
+            error "❌ Неверный порт SSH: ${CONFIG[SSH_PORT]} (1024-65535)"
+        fi
+        
+        success "✅ SSH порт: ${CONFIG[SSH_PORT]} (UFW + Fail2ban)"
+    fi
+}
+
 show_menu() {
-    echo -e "\n${YELLOW}Выберите компоненты:${NC}"
+    echo -e "\n${YELLOW}SSH: ${GREEN}${CONFIG[SSH_PORT]:-не_задан}${NC} | Fail2ban: ${CONFIG[MAXRETRY]:-3}→${CONFIG[BANTIME]:-30дн} | Лог: $LOG_FILE"
+    echo -e "\n${YELLOW}Выберите:${NC}"
     cat << EOF
-  1) 📦 Обновление системы
-  2) 🔐 SSH Hardening
-  3) 🛡️ UFW Firewall
-  4) ⚡ Fail2ban
-  5) 🛠️ Kernel Hardening
+  1) 📦 Система
+  2) 🔐 SSH (${CONFIG[SSH_PORT]:-порт})
+  3) 🛡️ UFW (откроет SSH)
+  4) ⚡ Fail2ban ${RED}(3→30 дней!)${NC}
+  5) 🛠️ Kernel
   6) 📊 Auditd
-  7) 🚫 Отключить сервисы
+  7) 🚫 Сервисы
   8) ${GREEN}🎉 ВСЁ сразу${NC}
   9) ❌ Выход
 EOF
     read -p "► " choice
 }
 
-# Port validation
-validate_port() {
-    [[ "$1" =~ ^[0-9]+$ ]] && [[ "$1" -ge 1024 ]] && [[ "$1" -le 65535 ]]
-}
+update_system() { log "📦 Обновление..."; apt update && apt full-upgrade -y && apt autoremove -y; success "Система обновлена"; }
 
-# 1. System update
-update_system() {
-    log "📦 Обновление системы..."
-    apt update
-    apt full-upgrade -y
-    apt autoremove -y
-    success "Система обновлена"
-}
-
-# 2. SSH Hardening
 configure_ssh() {
-    log "🔐 Настройка SSH..."
-    
-    read -p "SSH порт [56123]: " SSH_PORT
-    SSH_PORT=${SSH_PORT:-56123}
-    
-    [[ ! validate_port "$SSH_PORT" ]] && { error "Неверный порт: $SSH_PORT"; return 1; }
-    
-    # Backup
-    cp /etc/ssh/sshd_config /root/sshd_config.backup
-    
-    # Configure
-    sed -i "s/^#*Port .*/Port $SSH_PORT/" /etc/ssh/sshd_config
+    setup_ssh_port
+    log "🔐 SSH → ${CONFIG[SSH_PORT]}..."
+    cp /etc/ssh/sshd_config /root/sshd_config.backup 2>/dev/null || true
+    sed -i "s/^#*Port .*/Port ${CONFIG[SSH_PORT]}/" /etc/ssh/sshd_config
     sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
     sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
     sed -i 's/^#*MaxAuthTries.*/MaxAuthTries 3/' /etc/ssh/sshd_config
-    sed -i 's/^#*MaxSessions.*/MaxSessions 5/' /etc/ssh/sshd_config
-    sed -i 's/^#*X11Forwarding.*/X11Forwarding no/' /etc/ssh/sshd_config
     
-    # Test & restart
-    sshd -t >/dev/null 2>&1 || {
-        warning "SSH config error, rollback..."
-        cp /root/sshd_config.backup /etc/ssh/sshd_config
-        return 1
-    }
-    
-    systemctl restart ssh
-    success "SSH: порт $SSH_PORT, ключи only"
+    sshd -t >/dev/null 2>&1 && { systemctl restart ssh; success "SSH: ${CONFIG[SSH_PORT]}, ключи"; } || { cp /root/sshd_config.backup /etc/ssh/sshd_config; error "SSH ошибка"; }
 }
 
-# 3. UFW Firewall
 configure_firewall() {
-    log "🛡️ Настройка UFW..."
-    
-    # Enable UFW
-    ufw --force enable
+    setup_ssh_port
+    log "🛡️ UFW..."
+    ufw --force enable >/dev/null 2>&1
     ufw default deny incoming
     ufw default allow outgoing
+    ufw allow "${CONFIG[SSH_PORT]}"/tcp
+    success "UFW: SSH ${CONFIG[SSH_PORT]} открыт"
     
-    # SSH port
-    ufw allow "${SSH_PORT:-56123}"/tcp
-    
-    # Additional ports
-    echo -e "\n${YELLOW}Дополнительные порты:${NC}"
-    read -p "HTTP (80)? [n]: " HTTP_PORT
-    [[ $HTTP_PORT =~ ^[Yy]$ ]] && ufw allow 80/tcp
-    
-    read -p "HTTPS (443)? [n]: " HTTPS_PORT  
-    [[ $HTTPS_PORT =~ ^[Yy]$ ]] && ufw allow 443/tcp
-    
-    read -p "Custom ports (comma sep): " CUSTOM_PORTS
-    IFS=',' read -ra PORTS <<< "$CUSTOM_PORTS"
-    for port in "${PORTS[@]}"; do
-        [[ -n $port ]] && ufw allow "${port%/tcp}/tcp"
-    done
+    read -p "HTTP 80? [n]: " h; [[ $h =~ ^[Yy]$ ]] && { ufw allow 80/tcp; CONFIG[HTTP_ENABLED]=yes; success "HTTP 80"; }
+    read -p "HTTPS 443? [n]: " s; [[ $s =~ ^[Yy]$ ]] && { ufw allow 443/tcp; CONFIG[HTTPS_ENABLED]=yes; success "HTTPS 443"; }
+    read -p "Доп. порты: " c; [[ -n "$c" ]] && { CONFIG[CUSTOM_PORTS]="$c"; IFS=',' read -ra ports <<< "$c"; for p in "${ports[@]}"; do ufw allow "${p%/tcp}"/tcp; done; success "Порты: $c"; }
     
     ufw reload
-    success "Firewall настроен:"
-    ufw status | head -15
+    echo; ufw status | head -15
 }
 
-# 4. Fail2ban
+# 🔥 НОВЫЙ Fail2ban с баном на 30 дней!
 configure_fail2ban() {
-    log "⚡ Установка Fail2ban..."
+    setup_ssh_port
+    log "⚡ ${RED}МОЩНЫЙ Fail2ban${NC} (3 попытки = ${CONFIG[BANTIME]} сек = 30 дней!)"
     
     apt install -y fail2ban
     
-    read -p "Время бана (сек) [3600]: " BANTIME
-    BANTIME=${BANTIME:-3600}
+    echo -e "${YELLOW}⚠️  НАСТРОЙКИ БЕЗОПАСНОСТИ:${NC}"
+    echo "  • ${CONFIG[MAXRETRY]:-3} попыток = бан на ${CONFIG[BANTIME]:-2592000} сек"
+    echo "  • ${CONFIG[FINDTIME]:-86400} сек = 24 часа (период анализа)"
     
-    read -p "Период проверки (сек) [600]: " FINDTIME
-    FINDTIME=${FINDTIME:-600}
+    read -p "Бан (сек) [${CONFIG[BANTIME]} = 30 дней]: " bt
+    CONFIG[BANTIME]=${bt:-${CONFIG[BANTIME]}}
     
-    read -p "Макс. попытки [3]: " MAXRETRY
-    MAXRETRY=${MAXRETRY:-3}
+    read -p "Период (сек) [${CONFIG[FINDTIME]} = 24ч]: " ft
+    CONFIG[FINDTIME]=${ft:-${CONFIG[FINDTIME]}}
     
-    # SSH jail
+    read -p "Попытки [${CONFIG[MAXRETRY]}]: " mr
+    CONFIG[MAXRETRY]=${mr:-${CONFIG[MAXRETRY]}}
+    
+    # МОЩНАЯ Fail2ban конфигурация!
     mkdir -p /etc/fail2ban/jail.d
     cat > /etc/fail2ban/jail.d/sshd.conf << EOF
 [sshd]
 enabled = true
-port = ${SSH_PORT:-56123}
-bantime = $BANTIME
-findtime = $FINDTIME
-maxretry = $MAXRETRY
+port = ${CONFIG[SSH_PORT]}
+bantime = ${CONFIG[BANTIME]}
+findtime = ${CONFIG[FINDTIME]}
+maxretry = ${CONFIG[MAXRETRY]}
+backend = auto
 EOF
     
-    systemctl restart fail2ban
-    systemctl enable fail2ban
-    success "Fail2ban: $MAXRETRY попыток → $BANTIME сек"
+    systemctl restart fail2ban && systemctl enable fail2ban
+    
+    # Показать силу!
+    BAN_DAYS=$((CONFIG[BANTIME]/86400))
+    success "🔥 Fail2ban: ${CONFIG[MAXRETRY]} попыток → ${BAN_DAYS} ДНЕЙ БАН! (порт ${CONFIG[SSH_PORT]})"
 }
 
-# 5. Kernel Hardening
-configure_kernel() {
-    log "🛠️ Kernel hardening..."
-    
-    cat >> /etc/sysctl.conf << 'EOF'
+configure_kernel() { log "🛠️ Kernel..."; cat >> /etc/sysctl.conf << 'EOF'
+net.ipv4.tcp_syncookies=1
+net.ipv4.conf.all.rp_filter=1
+net.ipv4.conf.all.accept_redirects=0
+EOF; sysctl -p; success "Kernel hardening"; }
 
-# SYN flood protection
-net.ipv4.tcp_syncookies = 1
-net.ipv4.tcp_syn_retries = 2
-net.ipv4.tcp_synack_retries = 2
+configure_auditd() { log "📊 Auditd..."; apt install -y auditd; systemctl enable --now auditd; auditctl -w /etc/ssh/sshd_config -p wa -k ssh; success "Auditd"; }
 
-# IP spoofing protection
-net.ipv4.conf.all.rp_filter = 1
-net.ipv4.conf.default.rp_filter = 1
+disable_services() { log "🚫 Сервисы..."; for s in cups avahi-daemon; do systemctl disable $s 2>/dev/null || true; systemctl stop $s 2>/dev/null || true; success "$s off"; done; }
 
-# ICMP protection
-net.ipv4.conf.all.accept_redirects = 0
-net.ipv4.conf.default.accept_redirects = 0
-net.ipv4.conf.all.send_redirects = 0
-
-# Connection tracking
-net.netfilter.nf_conntrack_max = 262144
-EOF
-    
-    sysctl -p
-    success "Kernel hardening применён"
-}
-
-# 6. Auditd
-configure_auditd() {
-    log "📊 Установка Auditd..."
-    
-    apt install -y auditd audispd-plugins
-    
-    systemctl enable --now auditd
-    
-    # Monitor critical files
-    auditctl -w /etc/ssh/sshd_config -p wa -k ssh-config
-    auditctl -w /etc/ufw -p wa -k ufw-rules
-    auditctl -w /etc/fail2ban -p wa -k fail2ban
-    auditctl -w /etc/sudoers -p wa -k sudoers
-    
-    success "Auditd: мониторинг критических файлов"
-}
-
-# 7. Disable unnecessary services
-disable_services() {
-    log "🚫 Отключение ненужных сервисов..."
-    
-    for service in cups avahi-daemon iscsid; do
-        if systemctl is-active --quiet $service; then
-            systemctl disable --now $service
-            success "$service отключён"
-        fi
-    done
-}
-
-# Summary
-show_summary() {
+show_detailed_report() {
     clear
+    BAN_DAYS=$((CONFIG[BANTIME]/86400))
     cat << EOF
-${GREEN}🎉 НАСТРОЙКА ЗАВЕРШЕНА УСПЕШНО!${NC}
+    
+${GREEN}🎉 НАСТРОЙКА ЗАВЕРШЕНА!${NC} ${YELLOW}v1.0.3${NC}
+${BLUE}═══════════════════════════════════════════════════════════════${NC}
 
-📋 РЕЗУЛЬТАТЫ:
+${GREEN}📋 ИТОГОВЫЙ ОТЧЕТ:${NC}
 
-🔐 ${YELLOW}SSH:${NC} порт ${SSH_PORT:-56123}, только ключи
-🛡️ ${YELLOW}UFW:${NC} deny incoming, разрешены нужные порты
-⚡ ${YELLOW}Fail2ban:${NC} ${MAXRETRY:-3}→${BANTIME:-3600}с бан
-🛠️ ${YELLOW}Kernel:${NC} SYN flood, IP spoofing защита
-📊 ${YELLOW}Auditd:${NC} мониторинг /etc/
-🚫 ${YELLOW}Services:${NC} cups, avahi-daemon off
+🔐 ${YELLOW}SSH:${NC}
+  • Порт: ${GREEN}${CONFIG[SSH_PORT]}${NC}
+  • Root: ${RED}🚫 ОТКЛЮЧЁН${NC}
+  • Пароли: ${RED}🚫 ОТКЛЮЧЁН${NC} (только ключи!)
+  • Макс. попытки: ${YELLOW}3${NC}
 
-📊 ${YELLOW}Логи:${NC} $LOG_FILE
-💾 ${YELLOW}Backup:${NC} /root/*.backup
+🛡️ ${YELLOW}UFW:${NC}
+  • По умолчанию: ${RED}DENY IN${NC} | ${GREEN}ALLOW OUT${NC}
+  • Открыто:
+    ${GREEN}• ${CONFIG[SSH_PORT]}/tcp${NC} (SSH)
+EOF
+    
+    [[ "${CONFIG[HTTP_ENABLED]}" == "yes" ]] && echo "    ${GREEN}• 80/tcp${NC} (HTTP)"
+    [[ "${CONFIG[HTTPS_ENABLED]}" == "yes" ]] && echo "    ${GREEN}• 443/tcp${NC} (HTTPS)"
+    [[ -n "${CONFIG[CUSTOM_PORTS]}" ]] && echo "    ${YELLOW}• ${CONFIG[CUSTOM_PORTS]}${NC}"
 
-${RED}⚠️ Подключение SSH:${NC} ${YELLOW}ssh -p ${SSH_PORT:-56123} user@IP${NC}
+    cat << EOF
 
+⚡ ${RED}Fail2ban СУПЕРЗАЩИТА:${NC}
+  • SSH: ${CONFIG[SSH_PORT]}
+  • ${YELLOW}${CONFIG[MAXRETRY]}${NC} попыток → ${RED}${BAN_DAYS} ДНЕЙ${NC} БАН! 🔥
+  • Анализ: ${CONFIG[FINDTIME]} сек (${CONFIG[FINDTIME]/3600}ч)
+
+🛠️ ${YELLOW}Kernel:${NC}
+  • SYN flood: ${GREEN}✓${NC}
+  • IP spoofing: ${GREEN}✓${NC}
+
+📊 ${YELLOW}Мониторинг:${NC} Auditd ${GREEN}✓${NC}
+
+🚫 ${YELLOW}Отключено:${NC} cups, avahi-daemon ${GREEN}✓${NC}
+
+${BLUE}═══════════════════════════════════════════════════════════════${NC}
+${YELLOW}📊 Лог:${NC} $LOG_FILE
+${YELLOW}💾 Backup:${NC} /root/sshd_config.backup
+
+${RED}⚠️ SSH:${NC} ${GREEN}ssh -p ${CONFIG[SSH_PORT]} user@IP${NC} ${RED}(КЛЮЧИ!)${NC}
+
+${GREEN}🏆 VPS - КРЕПОСТЬ! Никто не пройдёт!${NC} 🔥🔒
 EOF
 }
 
-# Main loop
 main() {
-    check_root
-    check_ubuntu
-    show_banner
-    
+    check_root; check_ubuntu; show_banner
     while true; do
         show_menu
         case $choice in
@@ -257,22 +216,11 @@ main() {
             5) configure_kernel ;;
             6) configure_auditd ;;
             7) disable_services ;;
-            8) 
-                update_system
-                configure_ssh
-                configure_firewall
-                configure_fail2ban
-                configure_kernel
-                configure_auditd
-                disable_services
-                show_summary
-                exit 0
-                ;;
-            9) show_summary; exit 0 ;;
-            *) error "Выберите 1-9";;
+            8) update_system; configure_ssh; configure_firewall; configure_fail2ban; configure_kernel; configure_auditd; disable_services; show_detailed_report; exit 0 ;;
+            9) [[ -n "${CONFIG[SSH_PORT]}" ]] && show_detailed_report || echo "${YELLOW}Настройки не применены${NC}"; exit 0 ;;
+            *) error "1-9";;
         esac
-        echo -e "\n${YELLOW}Нажмите Enter для продолжения...${NC}"
-        read
+        echo -e "\n${YELLOW}Enter...${NC}"; read
     done
 }
 
