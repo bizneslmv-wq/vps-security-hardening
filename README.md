@@ -14,10 +14,10 @@
 curl -O https://raw.githubusercontent.com/bizneslmv-wq/vps-security-hardening/main/vps-hardening-script.sh
 
 2. Права на выполнение
-chmod +x vps-hardening-script.sh
+"chmod +x vps-hardening-script.sh"
 
 3. Запустить
-sudo ./vps-hardening-script.sh
+"sudo ./vps-hardening-script.sh"
 
 
 **Выберите `8` (ВСЁ сразу) → Ответьте на вопросы → VPS защищён!** 🎉
