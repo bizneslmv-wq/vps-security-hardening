@@ -2,11 +2,6 @@
 
 # 🚀 VPS Ubuntu 24.04 Security Hardening Script
 
-[![GitHub stars](https://img.shields.io/github/stars/bizneslmv-wq/vps-security-hardening?style=social)](https://github.com/bizneslmv-wq/vps-security-hardening/stargazers/)
-[![GitHub forks](https://img.shields.io/github/forks/bizneslmv-wq/vps-security-hardening?style=social)](https://github.com/bizneslmv-wq/vps-security-hardening/network/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04%20LTS-orange?logo=ubuntu)](https://ubuntu.com/)
-
 **Интерактивный bash скрипт для полной защиты VPS Ubuntu 24.04 за 5 минут**
 
 🔒 **SSH Hardening** | 🛡️ **UFW Firewall** | ⚡ **Fail2ban** | 🛠️ **Kernel Hardening**
