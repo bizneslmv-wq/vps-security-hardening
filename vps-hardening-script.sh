@@ -14,9 +14,9 @@ fi
 
 echo ""
 echo "🔄 1. System update..."
-apt update -qq
-apt upgrade -y -qq
-apt autoremove -y -qq
+apt update -qq >/dev/null 2>&1
+apt upgrade -y -qq >/dev/null 2>&1
+apt autoremove -y -qq >/dev/null 2>&1
 echo "✅ System updated"
 
 echo ""
@@ -30,7 +30,7 @@ if [[ ! "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1024 ] || [ "$port" -gt 65535 ];
 fi
 
 sed -i "s/^#*Port .*/Port $port/" /etc/ssh/sshd_config
-systemctl restart ssh
+systemctl restart ssh >/dev/null 2>&1
 echo "✅ SSH port: $port"
 
 echo ""
@@ -45,19 +45,19 @@ if [ "$pass1" != "$pass2" ] || [ ${#pass1} -lt 8 ]; then
   exit 1
 fi
 
-echo "root:$pass1" | chpasswd
+echo "root:$pass1" | chpasswd >/dev/null 2>&1
 echo "✅ Root password changed"
 
 echo ""
 echo "🛡️ 4. UFW Firewall..."
 ufw --force enable -y >/dev/null 2>&1
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow "$port"/tcp
+ufw default deny incoming >/dev/null 2>&1
+ufw default allow outgoing >/dev/null 2>&1
+ufw allow "$port"/tcp >/dev/null 2>&1
 echo "✅ SSH $port/tcp allowed"
 
 echo ""
-echo "Additional ports (y/n loop):"
+echo "Additional ports:"
 echo "SSH $port already allowed"
 while true; do
   read -p "Add port? (y/n): " more
@@ -66,14 +66,14 @@ while true; do
   fi
   read -p "Port number: " p
   if [[ "$p" =~ ^[0-9]+$ ]] && [ "$p" != "$port" ] && [ "$p" -ge 1 ] && [ "$p" -le 65535 ]; then
-    ufw allow "$p"/tcp
+    ufw allow "$p"/tcp >/dev/null 2>&1
     echo "✅ $p/tcp added"
   else
     echo "⚠️ Invalid port $p"
   fi
 done
 
-ufw reload
+ufw reload >/dev/null 2>&1
 echo ""
 echo "UFW status:"
 ufw status
@@ -86,7 +86,7 @@ echo "✅ Ping blocked"
 
 echo ""
 echo "⚡ 6. Fail2ban..."
-apt install -y -qq fail2ban
+apt install -y -qq fail2ban >/dev/null 2>&1
 cat > /etc/fail2ban/jail.d/sshd.conf << EOF
 [sshd]
 enabled = true
@@ -95,9 +95,9 @@ bantime = 2592000
 findtime = 86400
 maxretry = 3
 EOF
-systemctl restart fail2ban
-systemctl enable fail2ban
-echo "✅ Fail2ban: 3 attempts → 30 days ban"
+systemctl restart fail2ban >/dev/null 2>&1
+systemctl enable fail2ban >/dev/null 2>&1
+echo "✅ Fail2ban: 3→30 days ban (port $port)"
 
 echo ""
 echo "🛠️ 7. Kernel hardening..."
@@ -109,6 +109,7 @@ echo ""
 echo "🎉 SETUP COMPLETE! v2.3"
 echo "========================"
 echo "SSH: ssh -p $port root@YOUR_IP"
-echo "UFW: ufw status"
+echo "UFW: ufw status" 
 echo "Fail2ban: fail2ban-client status sshd"
 echo "Ping test: ping YOUR_IP (should timeout)"
+echo "Log: /var/log/vps-security-*.log"
