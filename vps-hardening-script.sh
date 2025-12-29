@@ -1,182 +1,114 @@
 #!/bin/bash
-# VPS Ubuntu 24.04 Security Script v2.2.1 (FIXED)
-# Author: Maks Leto (bizneslmv-wq)
-################################################################################
+# VPS Security v2.3 - 100% РАБОТАЕТ!
+# by bizneslmv-wq
 
-# Отключаем set -e для надёжности
-set +e
+clear
+echo "🚀 VPS Ubuntu 24.04 Security v2.3"
+echo "=================================="
 
-RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m' BLUE='\033[0;34m' NC='\033[0m'
-LOG_FILE="/var/log/vps-security-$(date +%Y%m%d-%H%M%S).log"
+# Root check
+if [ "$EUID" -ne 0 ]; then
+  echo "❌ sudo required!"
+  exit 1
+fi
 
-log() { echo -e "${BLUE}[$(date '+%H:%M:%S')]${NC} $1" | tee -a "$LOG_FILE" 2>/dev/null; }
-success() { echo -e "${GREEN}[✓]${NC} $1" | tee -a "$LOG_FILE" 2>/dev/null; }
-error() { echo -e "${RED}[✗]${NC} $1" | tee -a "$LOG_FILE" 2>/dev/null; exit 1; }
+echo ""
+echo "🔄 1. System update..."
+apt update -qq
+apt upgrade -y -qq
+apt autoremove -y -qq
+echo "✅ System updated"
 
-SSH_PORT=""
-ADDITIONAL_PORTS=()
+echo ""
+echo "🔐 2. SSH port..."
+read -p "SSH port [56123]: " port
+port=${port:-56123}
 
-check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        echo -e "${RED}Запуск от root (sudo) требуется!${NC}"
-        exit 1
-    fi
-}
+if [[ ! "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1024 ] || [ "$port" -gt 65535 ]; then
+  echo "❌ Invalid port $port!"
+  exit 1
+fi
 
-show_banner() {
-    clear
-    cat << "EOF"
-╔═══════════════════════════════════════════════════════════════╗
-║           🚀 VPS Ubuntu 24.04 Security Script v2.2.1         ║
-║                        by bizneslmv-wq                       ║
-╚═══════════════════════════════════════════════════════════════╝
-EOF
-}
+sed -i "s/^#*Port .*/Port $port/" /etc/ssh/sshd_config
+systemctl restart ssh
+echo "✅ SSH port: $port"
 
-main() {
-    check_root
-    show_banner
-    
-    echo -e "\n${YELLOW}🔄 1. Обновление системы...${NC}"
-    log "Обновление системы..."
-    apt update -qq
-    DEBIAN_FRONTEND=noninteractive apt upgrade -y -qq --allow-downgrades
-    apt autoremove -y -qq
-    success "Система обновлена"
-    
-    echo -e "\n${YELLOW}🔐 2. Настройка SSH порта...${NC}"
-    echo -e "\n${YELLOW}Введите новый SSH порт:${NC}"
-    read -p "SSH порт [56123]: " SSH_PORT_INPUT
-    SSH_PORT=${SSH_PORT_INPUT:-56123}
-    
-    if ! [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || [[ "$SSH_PORT" -lt 1024 ]] || [[ "$SSH_PORT" -gt 65535 ]]; then
-        echo -e "${RED}Неверный порт: $SSH_PORT (1024-65535)${NC}"
-        exit 1
-    fi
-    
-    log "Смена SSH порта на $SSH_PORT..."
-    sed -i "s/^#*Port .*/Port $SSH_PORT/" /etc/ssh/sshd_config
-    systemctl restart ssh
-    success "SSH порт изменён: $SSH_PORT"
-    
-    echo -e "\n${YELLOW}🔑 3. Смена пароля root...${NC}"
-    echo -e "\n${YELLOW}Введите новый пароль root:${NC}"
-    read -s -p "Пароль: " NEW_PASS
-    echo
-    read -s -p "Повторите: " NEW_PASS2
-    echo
-    
-    if [[ "$NEW_PASS" != "$NEW_PASS2" ]]; then
-        echo -e "${RED}Пароли не совпадают!${NC}"
-        exit 1
-    fi
-    if [[ ${#NEW_PASS} -lt 8 ]]; then
-        echo -e "${RED}Пароль слишком короткий (<8 символов)${NC}"
-        exit 1
-    fi
-    
-    echo "root:$NEW_PASS" | chpasswd
-    success "Пароль root изменён"
-    
-    echo -e "\n${YELLOW}🛡️ 4. Настройка UFW Firewall...${NC}"
-    echo -e "\n${YELLOW}Настройка UFW...${NC}"
-    ufw --force enable -y
-    ufw default deny incoming
-    ufw default allow outgoing
-    ufw allow "$SSH_PORT"/tcp
-    success "SSH порт $SSH_PORT открыт в UFW"
-    
-    echo -e "\n${GREEN}SSH $SSH_PORT уже добавлен в UFW${NC}"
-    echo -e "\n${YELLOW}Дополнительные порты:${NC}"
-    
-    while true; do
-        read -p "${YELLOW}Добавить порт? (y/n): ${NC}" ADD_MORE
-        if [[ "$ADD_MORE" =~ ^[nN]$ ]]; then
-            break
-        fi
-        
-        if [[ "$ADD_MORE" =~ ^[yY]$ ]]; then
-            read -p "${YELLOW}Номер порта: ${NC}" PORT_INPUT
-            if [[ "$PORT_INPUT" =~ ^[0-9]+$ ]] && [[ "$PORT_INPUT" -ge 1 ]] && [[ "$PORT_INPUT" -le 65535 ]]; then
-                if [[ "$PORT_INPUT" != "$SSH_PORT" ]]; then
-                    ufw allow "$PORT_INPUT"/tcp
-                    ADDITIONAL_PORTS+=("$PORT_INPUT")
-                    success "Порт $PORT_INPUT/tcp добавлен"
-                else
-                    echo -e "${YELLOW}Порт $PORT_INPUT = SSH, пропускаю${NC}"
-                fi
-            else
-                echo -e "${YELLOW}Неверный порт: $PORT_INPUT${NC}"
-            fi
-        fi
-        echo
-    done
-    
-    ufw reload
-    echo -e "\n${GREEN}UFW статус:${NC}"
-    ufw status
-    
-    echo -e "\n${YELLOW}🚫 5. Запрет ping...${NC}"
-    log "Запрет ICMP (ping)..."
-    echo "net.ipv4.icmp_echo_ignore_all = 1" >> /etc/sysctl.conf
-    sysctl -p
-    success "Ping запрещён"
-    
-    echo -e "\n${YELLOW}⚡ 6. Fail2ban + Kernel...${NC}"
-    log "Установка Fail2ban..."
-    apt install -y -qq fail2ban
-    cat > /etc/fail2ban/jail.d/sshd.conf << EOF
+echo ""
+echo "🔑 3. Root password..."
+read -s -p "New root password: " pass1
+echo
+read -s -p "Repeat: " pass2
+echo
+
+if [ "$pass1" != "$pass2" ] || [ ${#pass1} -lt 8 ]; then
+  echo "❌ Passwords don't match or too short!"
+  exit 1
+fi
+
+echo "root:$pass1" | chpasswd
+echo "✅ Root password changed"
+
+echo ""
+echo "🛡️ 4. UFW Firewall..."
+ufw --force enable -y >/dev/null 2>&1
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow "$port"/tcp
+echo "✅ SSH $port/tcp allowed"
+
+echo ""
+echo "Additional ports (y/n loop):"
+echo "SSH $port already allowed"
+while true; do
+  read -p "Add port? (y/n): " more
+  if [ "$more" != "y" ]; then
+    break
+  fi
+  read -p "Port number: " p
+  if [[ "$p" =~ ^[0-9]+$ ]] && [ "$p" != "$port" ] && [ "$p" -ge 1 ] && [ "$p" -le 65535 ]; then
+    ufw allow "$p"/tcp
+    echo "✅ $p/tcp added"
+  else
+    echo "⚠️ Invalid port $p"
+  fi
+done
+
+ufw reload
+echo ""
+echo "UFW status:"
+ufw status
+
+echo ""
+echo "🚫 5. Block ping..."
+echo "net.ipv4.icmp_echo_ignore_all = 1" >> /etc/sysctl.conf
+sysctl -p >/dev/null 2>&1
+echo "✅ Ping blocked"
+
+echo ""
+echo "⚡ 6. Fail2ban..."
+apt install -y -qq fail2ban
+cat > /etc/fail2ban/jail.d/sshd.conf << EOF
 [sshd]
 enabled = true
-port = $SSH_PORT
+port = $port
 bantime = 2592000
 findtime = 86400
 maxretry = 3
 EOF
-    systemctl restart fail2ban
-    systemctl enable fail2ban
-    success "Fail2ban: 3→30 дней (порт $SSH_PORT)"
-    
-    log "Kernel hardening..."
-    echo "net.ipv4.tcp_syncookies = 1" >> /etc/sysctl.conf
-    sysctl -p
-    success "Kernel: SYN flood защита"
-    
-    echo -e "\n${GREEN}📋 7. Финальный отчёт...${NC}"
-    show_final_report
-}
+systemctl restart fail2ban
+systemctl enable fail2ban
+echo "✅ Fail2ban: 3 attempts → 30 days ban"
 
-show_final_report() {
-    clear
-    cat << EOF
-${GREEN}🎉 НАСТРОЙКА ЗАВЕРШЕНА! v2.2.1${NC}
+echo ""
+echo "🛠️ 7. Kernel hardening..."
+echo "net.ipv4.tcp_syncookies = 1" >> /etc/sysctl.conf
+sysctl -p >/dev/null 2>&1
+echo "✅ Kernel: SYN flood protection"
 
-${YELLOW}✅ ВСЁ УСТАНОВЛЕНО:${NC}
-
-🔐 SSH: порт ${GREEN}$SSH_PORT${NC}
-🔑 Root: пароль ${GREEN}ИЗМЕНЁН${NC}
-🛡️ UFW: ${RED}deny incoming${NC}
-   ${GREEN}• $SSH_PORT/tcp${NC} (SSH)
-
-EOF
-    
-    if [ ${#ADDITIONAL_PORTS[@]} -gt 0 ]; then
-        for port in "${ADDITIONAL_PORTS[@]}"; do
-            echo "   ${GREEN}• $port/tcp${NC}"
-        done
-    else
-        echo "   ${YELLOW}• доп. порты не добавлены${NC}"
-    fi
-    
-    cat << EOF
-🚫 Ping: ${RED}ЗАПРЕЩЁН${NC}
-⚡ Fail2ban: ${YELLOW}3→30 дней${NC} (SSH $SSH_PORT)
-🛠️ Kernel: ${GREEN}SYN защита${NC}
-
-${YELLOW}📊 Лог:${NC} $LOG_FILE
-
-${GREEN}✅ VPS готов к работе!${NC}
-EOF
-}
-
-main "$@"
+echo ""
+echo "🎉 SETUP COMPLETE! v2.3"
+echo "========================"
+echo "SSH: ssh -p $port root@YOUR_IP"
+echo "UFW: ufw status"
+echo "Fail2ban: fail2ban-client status sshd"
+echo "Ping test: ping YOUR_IP (should timeout)"
